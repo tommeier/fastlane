@@ -24,7 +24,21 @@ module Fastlane
         cmd << '--verbose' if params[:verbose]
         cmd << '--no-ansi' unless params[:ansi]
 
-        Actions.sh(cmd.join(' '))
+        begin
+          Actions.sh(cmd.join(' '))
+        rescue => ex
+          if ex.message =~ /None of your spec sources contain a spec satisfying the dependency:/
+            Helper.log.warn "Cocoapods spec repo might require an update. Retrying after update."
+            update_cmd = []
+            update_cmd << ['bundle exec'] if File.exist?('Gemfile') && params[:use_bundle_exec]
+            update_cmd << ['pod repo update']
+
+            Actions.sh(update_cmd.join(' '))
+            Actions.sh(cmd.join(' '))
+          else
+            raise ex
+          end
+        end
       end
 
       def self.description
