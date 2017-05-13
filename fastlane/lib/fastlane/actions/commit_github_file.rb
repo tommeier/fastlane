@@ -30,27 +30,32 @@ module Fastlane
         }
 
         UI.message("Committing #{api_file_path}")
-        GithubApiAction.run({
-          server_url: params[:server_url],
-          api_token: params[:api_token],
-          debug: params[:debug],
-          secure: params[:secure],
-          http_method: "PUT",
-          path: File.join("repos", params[:repository_name], "contents", api_file_path),
-          body: commit_request_body,
-          errors: {
-            422 => proc do |result|
-              json = result[:json]
-              UI.error(json || result[:body])
-              error = if json['message'] == "Invalid request.\n\n\"sha\" wasn't supplied."
-                        "File already exists - please remove from repo before uploading or rename this upload"
-                      else
-                        "Uprocessable error"
-                      end
-              UI.user_error!(error)
-            end
+        api_params = FastlaneCore::Configuration.create(
+          GithubApiAction.available_options,
+          {
+            server_url: params[:server_url],
+            api_token: params[:api_token],
+            debug: params[:debug],
+            secure: params[:secure],
+            http_method: "PUT",
+            path: File.join("repos", params[:repository_name], "contents", api_file_path),
+            body: commit_request_body,
+            errors: {
+              422 => proc do |result|
+                json = result[:json]
+                UI.error(json || result[:body])
+                error = if json['message'] == "Invalid request.\n\n\"sha\" wasn't supplied."
+                          "File already exists - please remove from repo before uploading or rename this upload"
+                        else
+                          "Uprocessable error"
+                        end
+                UI.user_error!(error)
+              end
+            }
           }
-        }) do |result|
+        )
+
+        GithubApiAction.run(api_params) do |result|
           UI.success("Successfully commited file to GitHub")
           json = result[:json]
           html_url = json['commit']['html_url']

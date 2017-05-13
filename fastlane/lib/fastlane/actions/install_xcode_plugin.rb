@@ -6,19 +6,22 @@ module Fastlane
 
         if params[:github]
           base_api_url = params[:github].sub('https://github.com', 'https://api.github.com/repos')
-
-          GithubApiAction.run(
-            url: File.join(base_api_url, 'releases/latest'),
-            http_method: 'GET',
-            errors: {
-              404 => proc do |result|
-                UI.error("No latest release found for the specified GitHub repository")
-              end,
-              '*' => proc do |result|
-                UI.error("GitHub responded with #{response[:status]}:#{response[:body]}")
-              end
+          api_params = FastlaneCore::Configuration.create(
+            GithubApiAction.available_options,
+            {
+              url: File.join(base_api_url, 'releases/latest'),
+              http_method: 'GET',
+              errors: {
+                404 => proc do |result|
+                  UI.error("No latest release found for the specified GitHub repository")
+                end,
+                '*' => proc do |result|
+                  UI.error("GitHub responded with #{response[:status]}:#{response[:body]}")
+                end
+              }
             }
-          ) do |result|
+          )
+          GithubApiAction.run(api_params) do |result|
             return nil if result[:json].nil?
             params[:url] = result[:json]['assets'][0]['browser_download_url']
           end

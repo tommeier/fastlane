@@ -15,19 +15,24 @@ module Fastlane
         }
         request_body['body'] = params[:body] if params[:body]
 
-        GithubApiAction.run(
-          server_url: params[:api_url],
-          api_token: params[:api_token],
-          http_method: 'POST',
-          path: "repos/#{params[:repo]}/pulls",
-          body: request_body,
-          errors: {
-            '*' => proc do |result|
-              UI.error("GitHub responded with #{result[:status]}: #{result[:body]}")
-              return nil
-            end
+        api_params = FastlaneCore::Configuration.create(
+          GithubApiAction.available_options,
+          {
+            server_url: params[:api_url],
+            api_token: params[:api_token],
+            http_method: 'POST',
+            path: "repos/#{params[:repo]}/pulls",
+            body: request_body,
+            errors: {
+              '*' => proc do |result|
+                UI.error("GitHub responded with #{result[:status]}: #{result[:body]}")
+                return nil
+              end
+            }
           }
-        ) do |result|
+        )
+
+        GithubApiAction.run(api_params) do |result|
           json = result[:json]
           number = json['number']
           html_url = json['html_url']

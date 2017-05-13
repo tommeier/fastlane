@@ -8,26 +8,31 @@ module Fastlane
       def self.run(params)
         UI.message("Getting release on GitHub (#{params[:server_url]}/#{params[:url]}: #{params[:version]})")
 
-        GithubApiAction.run(
-          server_url: params[:server_url],
-          api_token: params[:api_token],
-          http_method: 'GET',
-          path: "repos/#{params[:url]}/releases",
-          errors: {
-            404 => proc do |result|
-              UI.error("Repository #{params[:url]} cannot be found, please double check its name and that you provided a valid API token (if it's a private repository).")
-              return nil
-            end,
-            401 => proc do |result|
-              UI.error("You are not authorized to access #{params[:url]}, please make sure you provided a valid API token.")
-              return nil
-            end,
-            '*' => proc do |result|
-              UI.error("GitHub responded with #{result[:status]}:#{result[:body]}")
-              return nil
-            end
+        api_params = FastlaneCore::Configuration.create(
+          GithubApiAction.available_options,
+          {
+            server_url: params[:server_url],
+            api_token: params[:api_token],
+            http_method: 'GET',
+            path: "repos/#{params[:url]}/releases",
+            errors: {
+              404 => proc do |result|
+                UI.error("Repository #{params[:url]} cannot be found, please double check its name and that you provided a valid API token (if it's a private repository).")
+                return nil
+              end,
+              401 => proc do |result|
+                UI.error("You are not authorized to access #{params[:url]}, please make sure you provided a valid API token.")
+                return nil
+              end,
+              '*' => proc do |result|
+                UI.error("GitHub responded with #{result[:status]}:#{result[:body]}")
+                return nil
+              end
+            }
           }
-        ) do |result|
+        )
+
+        GithubApiAction.run(api_params) do |result|
           json = result[:json]
           json.each do |current|
             next unless current['tag_name'] == params[:version]

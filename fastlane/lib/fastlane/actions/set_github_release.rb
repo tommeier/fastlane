@@ -25,32 +25,37 @@ module Fastlane
         }
         body['target_commitish'] = params[:commitish] if params[:commitish]
 
-        GithubApiAction.run(
-          server_url: server_url,
-          api_token: api_token,
-          http_method: 'POST',
-          path: "repos/#{repo_name}/releases",
-          body: body,
-          errors: {
-            422 => proc do |result|
-              UI.error(result[:body])
-              UI.error("Release on tag #{tag_name} already exists!")
-              return nil
-            end,
-            404 => proc do |result|
-              UI.error(result[:body])
-              UI.user_error!("Repository #{repo_name} cannot be found, please double check its name and that you provided a valid API token (GITHUB_API_TOKEN)")
-            end,
-            401 => proc do |result|
-              UI.error(result[:body])
-              UI.user_error!("You are not authorized to access #{repo_name}, please make sure you provided a valid API token (GITHUB_API_TOKEN)")
-            end,
-            '*' => proc do |result|
-              UI.error("GitHub responded with #{result[:status]}:#{result[:body]}")
-              return nil
-            end
+        api_params = FastlaneCore::Configuration.create(
+          GithubApiAction.available_options,
+          {
+            server_url: server_url,
+            api_token: api_token,
+            http_method: 'POST',
+            path: "repos/#{repo_name}/releases",
+            body: body,
+            errors: {
+              422 => proc do |result|
+                UI.error(result[:body])
+                UI.error("Release on tag #{tag_name} already exists!")
+                return nil
+              end,
+              404 => proc do |result|
+                UI.error(result[:body])
+                UI.user_error!("Repository #{repo_name} cannot be found, please double check its name and that you provided a valid API token (GITHUB_API_TOKEN)")
+              end,
+              401 => proc do |result|
+                UI.error(result[:body])
+                UI.user_error!("You are not authorized to access #{repo_name}, please make sure you provided a valid API token (GITHUB_API_TOKEN)")
+              end,
+              '*' => proc do |result|
+                UI.error("GitHub responded with #{result[:status]}:#{result[:body]}")
+                return nil
+              end
+            }
           }
-        ) do |result|
+        )
+
+        GithubApiAction.run(api_params) do |result|
           json = result[:json]
           html_url = json['html_url']
           release_id = json['id']
@@ -67,19 +72,24 @@ module Fastlane
             # upload assets
             self.upload_assets(assets, json['upload_url'], api_token)
 
-            # fetch the release again, so that it contains the uploaded assets
-            GithubApiAction.run(
-              server_url: server_url,
-              api_token: api_token,
-              http_method: 'GET',
-              path: "repos/#{repo_name}/releases/#{release_id}",
-              errors: {
-                '*' => proc do |get_result|
-                  UI.error("GitHub responded with #{get_result[:status]}:#{get_result[:body]}")
-                  UI.user_error!("Failed to fetch the newly created release, but it *has been created* successfully.")
-                end
+            api_params = FastlaneCore::Configuration.create(
+              GithubApiAction.available_options,
+              {
+                server_url: server_url,
+                api_token: api_token,
+                http_method: 'GET',
+                path: "repos/#{repo_name}/releases/#{release_id}",
+                errors: {
+                  '*' => proc do |get_result|
+                    UI.error("GitHub responded with #{get_result[:status]}:#{get_result[:body]}")
+                    UI.user_error!("Failed to fetch the newly created release, but it *has been created* successfully.")
+                  end
+                }
               }
-            ) do |get_result|
+            )
+
+            # fetch the release again, so that it contains the uploaded assets
+            GithubApiAction.run(api_params) do |get_result|
               Actions.lane_context[SharedValues::SET_GITHUB_RELEASE_JSON] = get_result[:json]
               UI.success("Successfully uploaded assets #{assets} to release \"#{html_url}\"")
               return get_result[:json]
@@ -123,19 +133,23 @@ module Fastlane
           headers['Content-Type'] = 'application/zip'
         end
         UI.important("Uploading #{file_name}")
-        GithubApiAction.run(
-          api_token: api_token,
-          http_method: 'POST',
-          headers: headers,
-          url: expanded_url,
-          raw_body: File.read(file),
-          errors: {
-            '*' => proc do |result|
-              UI.error("GitHub responded with #{result[:status]}:#{result[:body]}")
-              UI.user_error!("Failed to upload asset #{file_name} to GitHub.")
-            end
+        api_params = FastlaneCore::Configuration.create(
+          GithubApiAction.available_options,
+          {
+            api_token: api_token,
+            http_method: 'POST',
+            headers: headers,
+            url: expanded_url,
+            raw_body: File.read(file),
+            errors: {
+              '*' => proc do |result|
+                UI.error("GitHub responded with #{result[:status]}:#{result[:body]}")
+                UI.user_error!("Failed to upload asset #{file_name} to GitHub.")
+              end
+            }
           }
-        ) do |result|
+        )
+        GithubApiAction.run(api_params) do |result|
           UI.success("Successfully uploaded #{file_name}.")
         end
       end
