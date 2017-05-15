@@ -52,6 +52,9 @@ module Spaceship
     # Raised when no user credentials were passed at all
     class NoUserCredentialsError < BasicPreferredInfoError; end
 
+    # Raised when a retryable connection error occurs
+    class RetryableConnectionError < BasicPreferredInfoError; end
+
     class ProgramLicenseAgreementUpdated < BasicPreferredInfoError
       def show_github_issues
         false
@@ -403,27 +406,39 @@ module Spaceship
         raise InvalidUserCredentialsError.new, "Invalid username and password combination. Used '#{user}' as the username."
       end
 
+      retry_attempts = 0
+      begin
       # get woinst, wois, and itctx cookie values
-      request(:get, "https://itunesconnect.apple.com/WebObjects/iTunesConnect.woa/wa")
+        request(:get, "https://itunesconnect.apple.com/WebObjects/iTunesConnect.woa/wa")
 
-      case response.status
-      when 403
-        raise InvalidUserCredentialsError.new, "Invalid username and password combination. Used '#{user}' as the username."
-      when 200
-        return response
-      else
-        location = response["Location"]
-        if location && URI.parse(location).path == "/auth" # redirect to 2 step auth page
-          handle_two_step(response)
-          return true
-        elsif (response.body || "").include?('invalid="true"')
-          # User Credentials are wrong
+        case response.status
+        when 403
           raise InvalidUserCredentialsError.new, "Invalid username and password combination. Used '#{user}' as the username."
-        elsif (response['Set-Cookie'] || "").include?("itctx")
-          raise "Looks like your Apple ID is not enabled for iTunes Connect, make sure to be able to login online"
+        when 200
+          return response
         else
-          info = [response.body, response['Set-Cookie']]
-          raise TunesClient::ITunesConnectError.new, info.join("\n")
+          location = response["Location"]
+          if location && URI.parse(location).path == "/auth" # redirect to 2 step auth page
+            handle_two_step(response)
+            return true
+          elsif (response.body || "").include?('invalid="true"')
+            # User Credentials are wrong
+            raise InvalidUserCredentialsError.new, "Invalid username and password combination. Used '#{user}' as the username."
+          elsif (response['Set-Cookie'] || "").include?("itctx")
+            raise "Looks like your Apple ID is not enabled for iTunes Connect, make sure to be able to login online"
+          elsif response.body =~ /Http\/1\.1 Service Unavailable/
+            raise RetryableConnectionError.new, response.body
+          else
+            info = [response.body, response['Set-Cookie']]
+            raise TunesClient::ITunesConnectError.new, info.join("\n")
+          end
+        end
+      rescue RetryableConnectionError => e
+        if retry_attempts <= 3
+          retry_attempts += 1
+          retry
+        else
+          raise e
         end
       end
     end
